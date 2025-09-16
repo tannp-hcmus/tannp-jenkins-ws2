@@ -89,8 +89,8 @@ pipeline {
                                     sh '''
                                         echo "Deploying to Firebase project: ${FIREBASE_PROJECT}"
                                         echo "Using Firebase Token authentication..."
-                                        echo "Token length: ${#FIREBASE_TOKEN}"
-                                        echo "Token starts with: ${FIREBASE_TOKEN:0:10}..."
+                                        echo "Token length: $(echo "$FIREBASE_TOKEN" | wc -c)"
+                                        echo "Token starts with: $(echo "$FIREBASE_TOKEN" | cut -c1-10)..."
                                         
                                         # Test token first
                                         echo "Testing Firebase token..."
