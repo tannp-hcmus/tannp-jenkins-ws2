@@ -83,23 +83,32 @@ pipeline {
                         echo 'Deploying to Firebase Hosting...'
                         dir("${PROJECT_NAME}") {
                             script {
-                                try {
-                                    // Check if Firebase token is available
-                                    withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
-                                        sh '''
-                                            echo "Deploying to Firebase project: ${FIREBASE_PROJECT}"
-                                            firebase deploy --token "$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
-                                        '''
-                                    }
-                                    echo "✅ Firebase deployment successful!"
-                                } catch (Exception e) {
-                                    echo "⚠️ Firebase deployment failed: ${e.getMessage()}"
-                                    echo "This might be due to:"
-                                    echo "- Project '${FIREBASE_PROJECT}' doesn't exist"
-                                    echo "- Invalid Firebase token"
-                                    echo "- Network connectivity issues"
-                                    currentBuild.result = 'UNSTABLE'
+                            try {
+                                // Use Firebase Token method (simple and straightforward)
+                                withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
+                                    sh '''
+                                        echo "Deploying to Firebase project: ${FIREBASE_PROJECT}"
+                                        echo "Using Firebase Token authentication..."
+                                        
+                                        # Deploy using token (may show deprecation warning but still works)
+                                        firebase deploy --token "$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
+                                    '''
                                 }
+                                echo "✅ Firebase deployment successful using Token!"
+                            } catch (Exception e) {
+                                echo "⚠️ Firebase deployment failed: ${e.getMessage()}"
+                                echo "This might be due to:"
+                                echo "- Missing 'firebase-token' credential in Jenkins"
+                                echo "- Invalid or expired Firebase token"
+                                echo "- Project '${FIREBASE_PROJECT}' doesn't exist or no permissions"
+                                echo "- Network connectivity issues"
+                                echo ""
+                                echo "💡 To fix this:"
+                                echo "1. Run: firebase login:ci"
+                                echo "2. Copy the generated token"
+                                echo "3. Add to Jenkins Credentials as 'firebase-token' (Secret text)"
+                                currentBuild.result = 'UNSTABLE'
+                            }
                             }
                         }
                     }
