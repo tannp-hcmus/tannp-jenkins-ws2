@@ -2,8 +2,8 @@ pipeline {
     agent any
     
     environment {
-        // Firebase project configuration
-        FIREBASE_PROJECT = 'tannp-jenkins-ws2'
+        // Firebase project configuration  
+        FIREBASE_PROJECT = 'jenkins-ws2-b6b91'
         
         // Remote server configuration
         REMOTE_USER = 'newbie'
