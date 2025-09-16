@@ -84,13 +84,24 @@ pipeline {
                         dir("${PROJECT_NAME}") {
                             script {
                             try {
-                                // Use Firebase Token method (simple and straightforward)
+                                // Use Firebase Token method with debugging
                                 withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
                                     sh '''
                                         echo "Deploying to Firebase project: ${FIREBASE_PROJECT}"
                                         echo "Using Firebase Token authentication..."
+                                        echo "Token length: ${#FIREBASE_TOKEN}"
+                                        echo "Token starts with: ${FIREBASE_TOKEN:0:10}..."
                                         
-                                        # Deploy using token (may show deprecation warning but still works)
+                                        # Test token first
+                                        echo "Testing Firebase token..."
+                                        firebase projects:list --token "$FIREBASE_TOKEN" || echo "Failed to list projects"
+                                        
+                                        # Test project access
+                                        echo "Testing project access..."
+                                        firebase use ${FIREBASE_PROJECT} --token "$FIREBASE_TOKEN" || echo "Failed to access project"
+                                        
+                                        # Deploy using token
+                                        echo "Attempting deployment..."
                                         firebase deploy --token "$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
                                     '''
                                 }
