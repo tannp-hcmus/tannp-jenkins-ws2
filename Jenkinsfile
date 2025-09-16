@@ -140,11 +140,6 @@ pipeline {
     }
     
     post {
-        always {
-            echo 'Cleaning up workspace...'
-            cleanWs()
-        }
-        
         success {
             echo 'Pipeline completed successfully!'
             script {
@@ -173,8 +168,16 @@ pipeline {
         failure {
             echo 'Pipeline failed!'
             script {
-                def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                // Get git info before any cleanup
+                def gitCommit = "unknown"
+                def gitBranch = "unknown"
+                
+                try {
+                    gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                } catch (Exception e) {
+                    echo "Could not get git info: ${e.getMessage()}"
+                }
                 
                 slackSend(
                     channel: env.SLACK_CHANNEL,
@@ -198,8 +201,16 @@ pipeline {
         unstable {
             echo 'Pipeline completed with warnings!'
             script {
-                def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                // Get git info before any cleanup
+                def gitCommit = "unknown"
+                def gitBranch = "unknown"
+                
+                try {
+                    gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                } catch (Exception e) {
+                    echo "Could not get git info: ${e.getMessage()}"
+                }
                 
                 slackSend(
                     channel: env.SLACK_CHANNEL,
@@ -218,6 +229,11 @@ pipeline {
                     """.stripIndent()
                 )
             }
+        }
+        
+        always {
+            echo 'Cleaning up workspace...'
+            cleanWs()
         }
     }
     

@@ -1,7 +1,7 @@
 function showTopBar() {
     let country = "France";
-    // let vat = 20;
-    let vat = 200;
+    let vat = 20;  // Fixed: Changed from 200 to 20 for tests to pass
+    // let vat = 200;
     setTimeout(() => {
         const countryBarElement = document.querySelector("section.country-bar");
         if (countryBarElement) {
