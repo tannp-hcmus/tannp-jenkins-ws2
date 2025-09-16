@@ -7,8 +7,8 @@ pipeline {
         
         // Remote server configuration
         REMOTE_USER = 'newbie'
-        REMOTE_HOST = '118.69.34.46'
-        REMOTE_PORT = '3334'
+        REMOTE_HOST = '10.1.1.195'
+        REMOTE_PORT = '22'  // Standard SSH port
         REMOTE_PATH = '/usr/share/nginx/html/jenkins'
         REMOTE_DEPLOY_PATH = '/usr/share/nginx/html/jenkins/tannp/template2'
         
@@ -130,15 +130,18 @@ pipeline {
                         echo 'Deploying to remote server...'
                         script {
                             try {
-                                withCredentials([sshUserPrivateKey(credentialsId: 'remote-server-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
+                                withCredentials([usernamePassword(credentialsId: 'remote-server-password', usernameVariable: 'SSH_USER', passwordVariable: 'SSH_PASS')]) {
                                     sh '''
+                                        # Install sshpass if not available
+                                        which sshpass || (echo "Installing sshpass..." && apt-get update && apt-get install -y sshpass)
+                                        
                                         # Test SSH connection first
                                         echo "Testing SSH connection to ${REMOTE_HOST}:${REMOTE_PORT}..."
-                                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "echo 'SSH connection successful'"
+                                        sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p ${REMOTE_PORT} ${SSH_USER}@${REMOTE_HOST} "echo 'SSH connection successful'"
                                         
                                         # Create deployment directory structure on remote server
                                         echo "Creating deployment directories..."
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "
+                                        sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${SSH_USER}@${REMOTE_HOST} "
                                             mkdir -p ${REMOTE_DEPLOY_PATH}/${PROJECT_NAME}
                                             mkdir -p ${REMOTE_DEPLOY_PATH}/deploy/${DEPLOY_DATE}
                                         "
@@ -149,14 +152,14 @@ pipeline {
                                         for file in ${DEPLOY_FILES}; do
                                             if [ -e "$file" ]; then
                                                 echo "Copying $file..."
-                                                scp -o StrictHostKeyChecking=no -i ${SSH_KEY} -P ${REMOTE_PORT} -r "$file" ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/${PROJECT_NAME}/
-                                                scp -o StrictHostKeyChecking=no -i ${SSH_KEY} -P ${REMOTE_PORT} -r "$file" ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/deploy/${DEPLOY_DATE}/
+                                                sshpass -p "${SSH_PASS}" scp -o StrictHostKeyChecking=no -P ${REMOTE_PORT} -r "$file" ${SSH_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/${PROJECT_NAME}/
+                                                sshpass -p "${SSH_PASS}" scp -o StrictHostKeyChecking=no -P ${REMOTE_PORT} -r "$file" ${SSH_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/deploy/${DEPLOY_DATE}/
                                             fi
                                         done
                                         
                                         # Create/update symlink and cleanup old deployments
                                         echo "Setting up symlinks and cleanup..."
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "
+                                        sshpass -p "${SSH_PASS}" ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${SSH_USER}@${REMOTE_HOST} "
                                             cd ${REMOTE_DEPLOY_PATH}/deploy
                                             rm -f current
                                             ln -sf ${DEPLOY_DATE} current
