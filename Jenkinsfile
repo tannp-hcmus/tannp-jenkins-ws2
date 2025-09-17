@@ -46,7 +46,7 @@ pipeline {
         DEPLOY_SERVER = '118.69.34.46'   // SSH server
         SSH_PORT = '3334'                // SSH port
         WEB_SERVER = '10.1.1.195'        // Web server for HTTP access
-        SSH_KEY = credentials('remote-server-password')  // Should be newbie_id_rsa
+        SSH_KEY = credentials('remote-server-key')  // Should be newbie_id_rsa
 
         // Deployment paths
         REMOTE_BASE_PATH = "/usr/share/nginx/html/jenkins"
