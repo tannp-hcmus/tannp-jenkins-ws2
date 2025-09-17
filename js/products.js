@@ -66,7 +66,7 @@ function displayProducts(products) {
 loadProducts();
 
 // Simulate heavy operation. It could be a complex price calculation.
-for (let i = 0; i < 10000000; i++) {
-    const temp = Math.sqrt(i) * Math.sqrt(i);
-}
+// for (let i = 0; i < 10000000; i++) {
+//     const temp = Math.sqrt(i) * Math.sqrt(i);
+// }
 
