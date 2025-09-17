@@ -81,31 +81,25 @@ pipeline {
                 stage('Deploy to Firebase') {
                     steps {
                         echo 'Deploying to Firebase Hosting...'
-                        dir("${PROJECT_NAME}") {
-                            script {
+                        script {
                             try {
-                                // Use Firebase Token method with debugging
-                                withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
+                                // Prepare public folder for Firebase
+                                dir("${PROJECT_NAME}") {
                                     sh '''
-                                        echo "Deploying to Firebase project: ${FIREBASE_PROJECT}"
-                                        echo "Using Firebase Token authentication..."
-                                        echo "Token length: $(echo "$FIREBASE_TOKEN" | wc -c)"
-                                        echo "Token starts with: $(echo "$FIREBASE_TOKEN" | cut -c1-10)..."
-                                        
-                                        # Test token first
-                                        echo "Testing Firebase token..."
-                                        firebase projects:list --token "$FIREBASE_TOKEN" || echo "Failed to list projects"
-                                        
-                                        # Test project access
-                                        echo "Testing project access..."
-                                        firebase use ${FIREBASE_PROJECT} --token "$FIREBASE_TOKEN" || echo "Failed to access project"
-                                        
-                                        # Deploy using token
-                                        echo "Attempting deployment..."
-                                        firebase deploy --token "$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
+                                        mkdir -p public
+                                        cp -r ./index.html ./404.html ./css ./js ./images ./public
                                     '''
                                 }
-                                echo "✅ Firebase deployment successful using Token!"
+
+                                // Deploy using Firebase token
+                                withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
+                                    dir("${PROJECT_NAME}") {
+                                        sh """
+                                            firebase deploy --token "\$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
+                                        """
+                                    }
+                                }
+                                echo "✅ Firebase deployment successful!"
                             } catch (Exception e) {
                                 echo "⚠️ Firebase deployment failed: ${e.getMessage()}"
                                 echo "This might be due to:"
@@ -120,7 +114,6 @@ pipeline {
                                 echo "3. Add to Jenkins Credentials as 'firebase-token' (Secret text)"
                                 currentBuild.result = 'UNSTABLE'
                             }
-                            }
                         }
                     }
                 }
@@ -130,45 +123,49 @@ pipeline {
                         echo 'Deploying to remote server...'
                         script {
                             try {
-                                withCredentials([sshUserPrivateKey(credentialsId: 'remote-server-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
-                                    sh '''
-                                        # Test SSH connection first
-                                        echo "Testing SSH connection to ${REMOTE_HOST}:${REMOTE_PORT}..."
-                                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "echo 'SSH connection successful'"
-                                        
-                                        # Create deployment directory structure on remote server
-                                        echo "Creating deployment directories..."
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "
-                                            mkdir -p ${REMOTE_DEPLOY_PATH}/${PROJECT_NAME}
-                                            mkdir -p ${REMOTE_DEPLOY_PATH}/deploy/${DEPLOY_DATE}
-                                        "
-                                        
-                                        # Copy necessary files to remote server
-                                        echo "Copying files to remote server..."
-                                        cd ${PROJECT_NAME}
-                                        for file in ${DEPLOY_FILES}; do
-                                            if [ -e "$file" ]; then
-                                                echo "Copying $file..."
-                                                scp -o StrictHostKeyChecking=no -i ${SSH_KEY} -P ${REMOTE_PORT} -r "$file" ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/${PROJECT_NAME}/
-                                                scp -o StrictHostKeyChecking=no -i ${SSH_KEY} -P ${REMOTE_PORT} -r "$file" ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DEPLOY_PATH}/deploy/${DEPLOY_DATE}/
+                                def RELEASE_DATE = new Date().format("yyyyMMddHHmmss")
+                                def PRIVATE_FOLDER = "/usr/share/nginx/html/jenkins/tannp"
+                                def DEPLOY_FOLDER = "/usr/share/nginx/html/jenkins/tannp/deploy"
+                                def RELEASE_FOLDER = "${DEPLOY_FOLDER}/${RELEASE_DATE}"
+                                def TEMPLATE_FOLDER = "/usr/share/nginx/html/jenkins/template2"
+                                def REMOTE_PORT = 3334
+                                def REMOTE_USER = "newbie"
+                                def REMOTE_HOST = "118.69.34.46"
+
+                                sshagent(credentials: ['remote-server-key']) {
+                                    // Initialize private folder from template if empty
+                                    sh """
+                                        ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
+                                            mkdir -p ${PRIVATE_FOLDER}
+                                            if [ -z "\$(ls -A ${PRIVATE_FOLDER})" ]; then
+                                                cp -r ${TEMPLATE_FOLDER}/* ${PRIVATE_FOLDER}
                                             fi
-                                        done
-                                        
-                                        # Create/update symlink and cleanup old deployments
-                                        echo "Setting up symlinks and cleanup..."
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "
-                                            cd ${REMOTE_DEPLOY_PATH}/deploy
-                                            rm -f current
-                                            ln -sf ${DEPLOY_DATE} current
-                                            
-                                            # Keep only 5 most recent deployments
-                                            ls -t | grep -E '^[0-9]{8}$' | tail -n +6 | xargs rm -rf
-                                            
-                                            echo 'Deployment completed successfully!'
-                                            echo 'Current structure:'
-                                            ls -la ${REMOTE_DEPLOY_PATH}/deploy/
-                                        "
-                                    '''
+                                        '
+                                    """
+
+                                    // Create release folder
+                                    sh """
+                                        ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${RELEASE_FOLDER}"
+                                    """
+
+                                    // Copy files to release folder
+                                    dir("${PROJECT_NAME}") {
+                                        sh """
+                                            scp -o StrictHostKeyChecking=no -P ${REMOTE_PORT} -r ./index.html ./404.html ./css ./js ./images ${REMOTE_USER}@${REMOTE_HOST}:${RELEASE_FOLDER}
+                                        """
+                                    }
+
+                                    // Create symlink to current release
+                                    sh """
+                                        ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "rm -rf ${DEPLOY_FOLDER}/current && ln -s ${RELEASE_FOLDER} ${DEPLOY_FOLDER}/current"
+                                    """
+
+                                    // Cleanup old releases (keep 5 most recent)
+                                    sh """
+                                        ssh -o StrictHostKeyChecking=no -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
+                                            cd ${DEPLOY_FOLDER} && ls -1t | grep -v "^current\$" | tail -n +6 | xargs -r rm -rf
+                                        '
+                                    """
                                 }
                                 echo "✅ Remote server deployment successful!"
                             } catch (Exception e) {
