@@ -140,6 +140,8 @@ deploy_to_firebase() {
 
     # Deploy to Firebase using token
     log "Starting Firebase deployment..."
+    info "Deploying từ thư mục: $BUILD_DIR"
+    info "Firebase Project: $FIREBASE_PROJECT_ID"
     NODE_OPTIONS="--max-old-space-size=4096" firebase deploy --only hosting --project="$FIREBASE_PROJECT_ID" --token="$FIREBASE_TOKEN" --non-interactive
 
     success "Deployment to Firebase completed"
