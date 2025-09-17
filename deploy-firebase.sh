@@ -7,7 +7,7 @@ set -e  # Exit on any error
 
 # Configuration
 PROJECT_NAME="web-performance-project1-initial"
-FIREBASE_PROJECT_ID="tannp-jenkins-ws2"  # From your Firebase config
+FIREBASE_PROJECT_ID="jenkins-ws2-b6b91"  # From your Firebase config
 BUILD_DIR="dist"  # Directory to deploy
 FIREBASE_TOKEN="${FIREBASE_TOKEN:-}"
 
