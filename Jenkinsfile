@@ -26,7 +26,7 @@ pipeline {
         )
         string(
             name: 'SLACK_CHANNEL',
-            defaultValue: '#lnd-2025-workshop-tannp',
+            defaultValue: '#lnd-2025-workshop2-tannp',
             description: 'Slack channel for notifications (e.g., #jenkins-notifications)'
         )
         string(
@@ -39,7 +39,7 @@ pipeline {
     environment {
         // Firebase credentials
         FIREBASE_TOKEN = credentials('firebase-token')
-        FIREBASE_PROJECT = 'tannp-jenkins-ws2'
+        FIREBASE_PROJECT = 'jenkins-ws2-b6b91'
 
         // Remote server credentials
         SSH_USER = 'newbie'              // SSH user for connection
