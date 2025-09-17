@@ -83,21 +83,17 @@ pipeline {
                         echo 'Deploying to Firebase Hosting...'
                         script {
                             try {
-                                // Prepare public folder for Firebase
-                                dir("${PROJECT_NAME}") {
-                                    sh '''
-                                        mkdir -p public
-                                        cp -r ./index.html ./404.html ./css ./js ./images ./public
-                                    '''
-                                }
+                                // Prepare public folder for Firebase (files are in project root)
+                                sh '''
+                                    mkdir -p public
+                                    cp -r ./index.html ./404.html ./css ./js ./images ./public
+                                '''
 
                                 // Deploy using Firebase token
                                 withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
-                                    dir("${PROJECT_NAME}") {
-                                        sh """
-                                            firebase deploy --token "\$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
-                                        """
-                                    }
+                                    sh """
+                                        firebase deploy --token "\$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
+                                    """
                                 }
                                 echo "✅ Firebase deployment successful!"
                             } catch (Exception e) {
@@ -135,7 +131,7 @@ pipeline {
                                 withCredentials([sshUserPrivateKey(credentialsId: 'remote-server-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
                                     // Initialize private folder from template if empty
                                     sh """
-                                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
+                                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
                                             mkdir -p ${PRIVATE_FOLDER}
                                             if [ -z "\$(ls -A ${PRIVATE_FOLDER})" ]; then
                                                 cp -r ${TEMPLATE_FOLDER}/* ${PRIVATE_FOLDER}
@@ -145,24 +141,22 @@ pipeline {
 
                                     // Create release folder
                                     sh """
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${RELEASE_FOLDER}"
+                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${RELEASE_FOLDER}"
                                     """
 
-                                    // Copy files to release folder
-                                    dir("${PROJECT_NAME}") {
-                                        sh """
-                                            scp -o StrictHostKeyChecking=no -i ${SSH_KEY} -P ${REMOTE_PORT} -r ./index.html ./404.html ./css ./js ./images ${REMOTE_USER}@${REMOTE_HOST}:${RELEASE_FOLDER}
-                                        """
-                                    }
+                                    // Copy files to release folder (files are in workspace root)
+                                    sh """
+                                        scp -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -P ${REMOTE_PORT} -r ./index.html ./404.html ./css ./js ./images ${REMOTE_USER}@${REMOTE_HOST}:${RELEASE_FOLDER}
+                                    """
 
                                     // Create symlink to current release
                                     sh """
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "rm -rf ${DEPLOY_FOLDER}/current && ln -s ${RELEASE_FOLDER} ${DEPLOY_FOLDER}/current"
+                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "rm -rf ${DEPLOY_FOLDER}/current && ln -s ${RELEASE_FOLDER} ${DEPLOY_FOLDER}/current"
                                     """
 
                                     // Cleanup old releases (keep 5 most recent)
                                     sh """
-                                        ssh -o StrictHostKeyChecking=no -i ${SSH_KEY} -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
+                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
                                             cd ${DEPLOY_FOLDER} && ls -1t | grep -v "^current\$" | tail -n +6 | xargs -r rm -rf
                                         '
                                     """
