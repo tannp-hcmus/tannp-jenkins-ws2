@@ -1,45 +1,51 @@
 #!/bin/bash
 
-# Remote server deployment script for web-performance-project1-initial
-# This script deploys the application to a remote server via SSH
+# Remote Server Deployment Script - Tannp's Version
+# Script deploy ứng dụng lên remote server qua SSH
+# Author: tannp
+# Created: $(date +%Y-%m-%d)
 
-set -e  # Exit on any error
+set -e  # Thoát ngay khi có lỗi
 
-# Configuration from environment variables
-SSH_USER="${SSH_USER:-newbie}"
-DEPLOY_SERVER="${DEPLOY_SERVER:-118.69.34.46}"
-SSH_PORT="${SSH_PORT:-3334}"
-WEB_SERVER="${WEB_SERVER:-10.1.1.195}"
-SSH_KEY="${SSH_KEY}"
-DEPLOY_USER="${DEPLOY_USER:-tannp}"
-# PERSONAL_FOLDER removed - using DEPLOY_USER directly
-REMOTE_BASE_PATH="${REMOTE_BASE_PATH:-/usr/share/nginx/html/jenkins}"
-TIMESTAMP="${TIMESTAMP}"
-BUILD_DIR="${BUILD_DIR:-deploy-staging}"
-KEEP_DEPLOYMENTS="${KEEP_DEPLOYMENTS:-5}"
+# Cấu hình từ environment variables
+SSH_USER="${SSH_USER:-newbie}"                    # SSH username
+DEPLOY_SERVER="${DEPLOY_SERVER:-118.69.34.46}"   # Server IP
+SSH_PORT="${SSH_PORT:-3334}"                      # SSH port
+WEB_SERVER="${WEB_SERVER:-10.1.1.195}"           # Web server IP
+SSH_KEY="${SSH_KEY}"                              # SSH private key path
+DEPLOY_USER="${DEPLOY_USER:-tannp}"               # Deploy folder name
+REMOTE_BASE_PATH="${REMOTE_BASE_PATH:-/usr/share/nginx/html/jenkins}"  # Remote path
+TIMESTAMP="${TIMESTAMP}"                          # Deployment timestamp
+BUILD_DIR="${BUILD_DIR:-deploy-staging}"          # Local build directory
+KEEP_DEPLOYMENTS="${KEEP_DEPLOYMENTS:-5}"         # Số lượng deployment giữ lại
 
-# Colors for output
+# Màu sắc cho output đẹp mắt
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Logging functions
+# Các hàm logging
 log() {
-    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
+    echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} 🚀 $1"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
+    echo -e "${RED}[LỖI]${NC} ❌ $1" >&2
 }
 
 success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[THÀNH CÔNG]${NC} ✅ $1"
 }
 
 warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[CẢNH BÁO]${NC} ⚠️ $1"
+}
+
+info() {
+    echo -e "${PURPLE}[INFO]${NC} ℹ️ $1"
 }
 
 # Check prerequisites
@@ -188,17 +194,18 @@ get_deployment_info() {
     local project_url="http://$WEB_SERVER/jenkins/$DEPLOY_USER/web-performance-project1-initial/"
     
     echo ""
-    echo "🚀 Remote deployment completed successfully!"
+    echo "🚀 Remote deployment hoàn thành thành công!"
     echo ""
-    echo "📱 Your application is now live at:"
-    echo "   Current URL: $deployment_url"
-    echo "   Project URL: $project_url"
+    echo "📱 Ứng dụng của bạn đã live tại:"
+    echo "   URL hiện tại: $deployment_url"
+    echo "   URL dự án: $project_url"
     echo ""
-    echo "🔧 Deployment Information:"
+    echo "🔧 Thông tin deployment:"
     echo "   Server: $SSH_USER@$DEPLOY_SERVER:$SSH_PORT"
-    echo "   Deploy Path: $REMOTE_BASE_PATH/$DEPLOY_USER/"
+    echo "   Đường dẫn: $REMOTE_BASE_PATH/$DEPLOY_USER/"
     echo "   Timestamp: $TIMESTAMP"
-    echo "   Deploy User: $DEPLOY_USER"
+    echo "   Deploy user: $DEPLOY_USER"
+    echo "   Deployed by: tannp 🎯"
     echo ""
 }
 
@@ -245,9 +252,10 @@ main() {
         esac
     done
     
-    log "Starting remote deployment..."
+    log "Bắt đầu remote deployment..."
+    info "Tác giả: tannp | $(date '+%d/%m/%Y %H:%M:%S')"
     
-    # Run deployment steps
+    # Chạy các bước deployment
     check_prerequisites
     test_ssh_connection
     prepare_build_for_remote
@@ -256,7 +264,7 @@ main() {
     update_symlinks_and_cleanup
     get_deployment_info
     
-    success "🎉 Remote deployment completed successfully!"
+    success "🎉 Remote deployment hoàn thành! Tuyệt vời! 🎊"
 }
 
 # Handle script interruption

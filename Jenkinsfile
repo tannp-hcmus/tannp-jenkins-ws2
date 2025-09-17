@@ -2,16 +2,16 @@ pipeline {
     agent any
 
     triggers {
-        // Poll SCM every minute for changes
-        pollSCM('* * * * *')
-        // GitHub hook trigger for GITScm polling
+        // Trigger build on GitHub push events
         githubPush()
+        // Poll SCM every 5 minutes as backup
+        pollSCM('H/5 * * * *')
     }
 
     parameters {
         choice(
             name: 'DEPLOY_ENVIRONMENT',
-            choices: ['local', 'firebase', 'remote', 'both'],
+            choices: ['both', 'firebase', 'remote', 'local'],
             description: 'Choose deployment environment: both (Firebase + Remote), firebase (Hosting), remote (Server), or local (template2)'
         )
         string(
@@ -82,59 +82,73 @@ pipeline {
 
         stage('Environment Check') {
             steps {
-                echo "🔍 Verifying build environment..."
+                echo "🔍 Kiểm tra môi trường build..."
 
                 sh '''
-                    # Check Node.js version compatibility (must be >= 20.0.0 for Firebase CLI)
+                    # Kiểm tra phiên bản Node.js (cần >= 20.0.0 cho Firebase CLI)
                     NODE_VERSION=$(node --version | cut -d'v' -f2)
                     NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
+                    echo "📋 Node.js version: $NODE_VERSION"
 
                     if [ "$NODE_MAJOR" -lt 20 ]; then
-                        echo "❌ ERROR: Node.js version $NODE_VERSION incompatible with Firebase CLI (required: >= 20.0.0)"
+                        echo "❌ LỖI: Node.js version $NODE_VERSION không tương thích với Firebase CLI (yêu cầu: >= 20.0.0)"
                         exit 1
                     fi
 
-                    # Check Firebase CLI availability
+                    # Kiểm tra Firebase CLI
                     if ! command -v firebase >/dev/null 2>&1; then
-                        echo "❌ Firebase CLI not found"
+                        echo "❌ Không tìm thấy Firebase CLI"
                         exit 1
                     fi
 
-                    echo "✅ Environment check passed"
+                    # Hiển thị thông tin môi trường
+                    echo "✅ Kiểm tra môi trường thành công"
+                    echo "📦 npm version: $(npm --version)"
+                    echo "🔥 Firebase CLI version: $(firebase --version)"
                 '''
             }
         }
 
-        stage('Checkout(scm)') {
+        stage('Checkout & Verify') {
             steps {
-                echo "🔍 Checking out source code..."
+                echo "📥 Lấy source code từ repository..."
                 checkout scm
 
                 sh '''
-                    # Verify critical files exist
+                    # Kiểm tra các file quan trọng
+                    echo "🔍 Kiểm tra các file cần thiết..."
                     for file in package.json index.html js css images; do
-                        [ -e "$file" ] || { echo "❌ Critical file/directory missing: $file"; exit 1; }
+                        if [ -e "$file" ]; then
+                            echo "✅ Tìm thấy: $file"
+                        else
+                            echo "❌ Thiếu file/thư mục quan trọng: $file"
+                            exit 1
+                        fi
                     done
-                    echo "✅ Critical files verified"
+                    echo "✅ Tất cả file cần thiết đã có đầy đủ"
                 '''
             }
         }
 
         stage('Build') {
             steps {
-                echo "📦 Building project..."
+                echo "📦 Cài đặt dependencies và build project..."
                 sh '''
-                    # Install dependencies
-                    npm install
+                    # Cài đặt dependencies
+                    echo "📦 Đang cài đặt npm dependencies..."
+                    npm ci --silent
+                    echo "✅ Dependencies đã được cài đặt"
                 '''
             }
         }
 
-        stage('Lint/Test') {
+        stage('Quality Check') {
             steps {
-                echo "🧪 Running linting and tests..."
+                echo "🧪 Chạy kiểm tra chất lượng code và tests..."
                 sh '''
+                    echo "🔍 Đang chạy linting và tests..."
                     npm run test:ci
+                    echo "✅ Tất cả tests đã pass"
                 '''
             }
             post {
@@ -142,14 +156,14 @@ pipeline {
                     // Archive test results if available
                     script {
                         if (fileExists('coverage/')) {
-                            echo "📊 Archiving test coverage results..."
+                            echo "📊 Lưu trữ kết quả test coverage..."
                             publishHTML([
                                 allowMissing: false,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
                                 reportDir: 'coverage/lcov-report',
                                 reportFiles: 'index.html',
-                                reportName: 'Test Coverage Report'
+                                reportName: 'Báo cáo Test Coverage'
                             ])
                         }
                     }
@@ -169,18 +183,20 @@ pipeline {
 
             steps {
                 script {
-                    // Determine deployment target
+                    // Xác định target deployment
                     def deployTarget = params.DEPLOY_ENVIRONMENT
 
-                    echo "🚀 Starting deployment to: ${deployTarget}"
+                    echo "🚀 Bắt đầu deployment đến: ${deployTarget}"
 
-                    // Prepare deployment files
+                    // Chuẩn bị các file deployment
                     sh '''
-                        # Create deployment staging area
+                        # Tạo thư mục staging cho deployment
+                        echo "📁 Tạo deployment staging area..."
                         rm -rf deploy-staging
                         mkdir -p deploy-staging
 
-                        # Copy deployment files
+                        # Copy các file cần thiết
+                        echo "📋 Copy files cho deployment..."
                         cp index.html 404.html deploy-staging/
                         cp -r css js images deploy-staging/
                         [ -f firebase.json ] && cp firebase.json deploy-staging/
@@ -188,45 +204,41 @@ pipeline {
                         [ -f eslint.config.js ] && cp eslint.config.js deploy-staging/
                         [ -f package.json ] && cp package.json deploy-staging/
 
-                        echo "✅ Deployment package prepared"
+                        echo "✅ Deployment package đã sẵn sàng"
                     '''
 
-                    // Deploy to local using deploy-local.sh script
+                    // Deploy to local environment
                     if (deployTarget == 'local' || deployTarget == 'both') {
-                        echo "📱 Deploying to Local..."
+                        echo "📱 Deploy đến Local environment..."
 
                         sh '''
                             chmod +x deploy-local.sh
                             ./deploy-local.sh
-                            echo "✅ Local deployment completed"
+                            echo "✅ Local deployment hoàn thành"
                         '''
                     }
 
                     // Deploy to Firebase Hosting
                     if (deployTarget == 'firebase' || deployTarget == 'both') {
-                        echo "🔥 Deploying to Firebase..."
+                        echo "🔥 Deploy đến Firebase Hosting..."
 
                         sh '''
                             chmod +x deploy-firebase.sh
                             ./deploy-firebase.sh
-                            echo "✅ Firebase deployment completed"
+                            echo "✅ Firebase deployment hoàn thành"
                         '''
                     }
 
                     // Deploy to remote server
                     if (deployTarget == 'remote' || deployTarget == 'both') {
-                        echo "🌐 Deploying to Remote Server..."
+                        echo "🌐 Deploy đến Remote Server..."
 
                         sh '''
-                            echo "🔧 Running remote deployment script..."
-
-                            # Make sure the script is executable
+                            echo "🔧 Chạy remote deployment script..."
                             chmod +x deploy-remote.sh
-
-                            echo "🚀 Executing deploy-remote.sh..."
+                            echo "🚀 Thực thi deploy-remote.sh..."
                             ./deploy-remote.sh
-
-                            echo "✅ Remote deployment completed"
+                            echo "✅ Remote deployment hoàn thành"
                         '''
                     }
                 }

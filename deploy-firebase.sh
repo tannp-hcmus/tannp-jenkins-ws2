@@ -1,82 +1,92 @@
 #!/bin/bash
 
-# Firebase deployment script for web-performance-project1-initial
-# This script deploys the application to Firebase Hosting
+# Firebase Deployment Script - Tannp's Custom Version
+# Script này deploy ứng dụng lên Firebase Hosting
+# Author: tannp
+# Created: $(date +%Y-%m-%d)
 
-set -e  # Exit on any error
+set -e  # Thoát ngay khi có lỗi
 
-# Configuration
+# Cấu hình dự án
 PROJECT_NAME="web-performance-project1-initial"
-FIREBASE_PROJECT_ID="jenkins-ws2-b6b91"  # From your Firebase config
-BUILD_DIR="dist"  # Directory to deploy
-FIREBASE_TOKEN="${FIREBASE_TOKEN:-}"
+FIREBASE_PROJECT_ID="jenkins-ws2-b6b91"  # Firebase project ID
+BUILD_DIR="dist"  # Thư mục chứa files để deploy
+FIREBASE_TOKEN="${FIREBASE_TOKEN:-}"  # Firebase authentication token
 
-# Colors for output
+# Màu sắc cho output đẹp mắt
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Logging functions
+# Các hàm logging
 log() {
-    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
+    echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} 📋 $1"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
+    echo -e "${RED}[LỖI]${NC} ❌ $1" >&2
 }
 
 success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[THÀNH CÔNG]${NC} ✅ $1"
 }
 
 warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[CẢNH BÁO]${NC} ⚠️ $1"
 }
 
-# Setup Firebase token authentication
+info() {
+    echo -e "${PURPLE}[INFO]${NC} ℹ️ $1"
+}
+
+# Thiết lập xác thực Firebase
 setup_credentials() {
-    log "Setting up Firebase authentication..."
+    log "Đang thiết lập xác thực Firebase..."
     
     if [[ -z "$FIREBASE_TOKEN" ]]; then
-        error "No Firebase token found!"
-        error "Please set FIREBASE_TOKEN environment variable"
-        error "Get your token by running: firebase login:ci"
+        error "Không tìm thấy Firebase token!"
+        error "Vui lòng set biến FIREBASE_TOKEN"
+        info "Lấy token bằng lệnh: firebase login:ci"
         exit 1
     fi
     
-    log "Using Firebase token for authentication"
-    success "Firebase token configured"
+    info "Sử dụng Firebase token để xác thực"
+    success "Firebase token đã được cấu hình"
 }
 
-# Check prerequisites
+# Kiểm tra các yêu cầu cần thiết
 check_prerequisites() {
-    log "Checking prerequisites..."
+    log "Kiểm tra các yêu cầu cần thiết..."
     
-    # Check if firebase CLI is installed
+    # Kiểm tra Firebase CLI đã được cài đặt chưa
     if ! command -v firebase &> /dev/null; then
-        error "Firebase CLI is not installed"
-        error "Install it with: npm install -g firebase-tools"
+        error "Firebase CLI chưa được cài đặt"
+        info "Cài đặt với lệnh: npm install -g firebase-tools"
         exit 1
     fi
     
-    success "Prerequisites check passed"
+    info "Firebase CLI version: $(firebase --version)"
+    success "Kiểm tra yêu cầu hoàn tất"
 }
 
-# Prepare build directory
+# Chuẩn bị thư mục build
 prepare_build() {
-    log "Preparing build directory..."
+    log "Chuẩn bị thư mục build..."
 
-    # Remove existing build directory
+    # Xóa thư mục build cũ nếu có
     if [[ -d "$BUILD_DIR" ]]; then
+        warning "Xóa thư mục build cũ: $BUILD_DIR"
         rm -rf "$BUILD_DIR"
     fi
 
-    # Create build directory
+    # Tạo thư mục build mới
     mkdir -p "$BUILD_DIR"
+    info "Đã tạo thư mục: $BUILD_DIR"
 
-    # Copy essential files for deployment
+    # Copy các file cần thiết để deploy
     ESSENTIAL_FILES=(
         "index.html"
         "404.html"
@@ -87,16 +97,17 @@ prepare_build() {
         "package.json"
     )
 
+    log "Đang copy các file cần thiết..."
     for item in "${ESSENTIAL_FILES[@]}"; do
         if [[ -e "$item" ]]; then
-            log "Copying $item to build directory..."
+            info "✓ Copy $item vào build directory"
             cp -r "$item" "$BUILD_DIR/"
         else
-            warning "File/directory $item not found, skipping..."
+            warning "Không tìm thấy $item, bỏ qua..."
         fi
     done
 
-    success "Build directory prepared"
+    success "Thư mục build đã sẵn sàng"
 }
 
 
@@ -142,16 +153,17 @@ get_deployment_url() {
     local custom_domain_url="https://${FIREBASE_PROJECT_ID}.firebaseapp.com"
 
     echo ""
-    echo "🚀 Deployment completed successfully!"
+    echo "🚀 Deployment hoàn thành thành công!"
     echo ""
-    echo "📱 Your application is now live at:"
-    echo "   Primary URL: $hosting_url"
-    echo "   Alternative: $custom_domain_url"
+    echo "📱 Ứng dụng của bạn đã live tại:"
+    echo "   URL chính: $hosting_url"
+    echo "   URL phụ: $custom_domain_url"
     echo ""
-    echo "🔧 Project Information:"
+    echo "🔧 Thông tin dự án:"
     echo "   Project ID: $FIREBASE_PROJECT_ID"
-    echo "   Build Directory: $BUILD_DIR"
-    echo "   Deployment Time: $(date)"
+    echo "   Thư mục build: $BUILD_DIR"
+    echo "   Thời gian deploy: $(date '+%d/%m/%Y %H:%M:%S')"
+    echo "   Deployed by: tannp 🎯"
 }
 
 # Cleanup build directory
@@ -209,23 +221,24 @@ main() {
         esac
     done
 
-    log "Starting Firebase deployment of $PROJECT_NAME..."
+    log "Bắt đầu Firebase deployment cho $PROJECT_NAME..."
+    info "Tác giả: tannp | $(date '+%d/%m/%Y %H:%M:%S')"
 
-    # Run deployment steps
+    # Chạy các bước deployment
     check_prerequisites
     setup_credentials
     prepare_build
     deploy_to_firebase
     get_deployment_url
 
-    # Cleanup
+    # Dọn dẹp
     if [[ "$keep_build" == true ]]; then
         cleanup --keep-build
     else
         cleanup
     fi
 
-    success "🎉 Firebase deployment completed successfully!"
+    success "🎉 Firebase deployment hoàn thành! Chúc mừng! 🎊"
 }
 
 # Handle script interruption

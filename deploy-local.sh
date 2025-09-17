@@ -1,43 +1,50 @@
 #!/bin/bash
 
-# Deploy script for web-performance-project1-initial
-# This script deploys the application to local environment following the template2 structure
+# Local Deployment Script - Tannp's Custom Version
+# Script deploy ứng dụng vào local environment theo cấu trúc template2
+# Author: tannp
+# Created: $(date +%Y-%m-%d)
 
-set -e  # Exit on any error
+set -e  # Thoát ngay khi có lỗi
 
-# Configuration
+# Cấu hình dự án
 PROJECT_NAME="web-performance-project1-initial"
 DEPLOY_BASE_DIR="$(cd .. && pwd)/template2"  # jenkins-ws/template2
 PROJECT_DIR="${DEPLOY_BASE_DIR}/${PROJECT_NAME}"
 DEPLOY_DIR="${DEPLOY_BASE_DIR}/deploy"
 CURRENT_DIR="${DEPLOY_BASE_DIR}/deploy/current"
 
-# Get current timestamp for deployment folder
+# Lấy timestamp hiện tại cho deployment folder
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DEPLOY_TARGET="${DEPLOY_DIR}/${TIMESTAMP}"
 
-# Colors for output
+# Màu sắc cho output đẹp mắt
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-# Logging function
+# Các hàm logging
 log() {
-    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
+    echo -e "${BLUE}[$(date '+%H:%M:%S')]${NC} 📁 $1"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
+    echo -e "${RED}[LỖI]${NC} ❌ $1" >&2
 }
 
 success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[THÀNH CÔNG]${NC} ✅ $1"
 }
 
 warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[CẢNH BÁO]${NC} ⚠️ $1"
+}
+
+info() {
+    echo -e "${PURPLE}[INFO]${NC} ℹ️ $1"
 }
 
 # Check if target directory is writable
@@ -201,31 +208,32 @@ show_deployment_info() {
 
 # Main deployment process
 main() {
-    log "Starting deployment of $PROJECT_NAME..."
+    log "Bắt đầu deployment của $PROJECT_NAME..."
+    info "Tác giả: tannp | $(date '+%d/%m/%Y %H:%M:%S')"
     
-    # Check permissions
+    # Kiểm tra quyền
     check_permissions
     
-    # Create directories
+    # Tạo thư mục
     create_directories
     
     # Copy files
     copy_files
     
-    # Update symlink
+    # Cập nhật symlink
     update_symlink
     
-    # Cleanup old deployments
+    # Dọn dẹp deployment cũ
     cleanup_old_deployments
     
-    # Verify deployment
+    # Xác minh deployment
     verify_deployment
     
-    # Show deployment info
+    # Hiển thị thông tin deployment
     show_deployment_info
     
-    success "🚀 Deployment completed successfully!"
-    log "You can access the application at: $CURRENT_DIR"
+    success "🚀 Local deployment hoàn thành! Xuất sắc! 🎊"
+    info "Bạn có thể truy cập ứng dụng tại: $CURRENT_DIR"
 }
 
 # Run main function
