@@ -1,295 +1,314 @@
 pipeline {
     agent any
-    
-    environment {
-        // Firebase project configuration  
-        FIREBASE_PROJECT = 'jenkins-ws2-b6b91'
-        
-        // Remote server configuration
-        REMOTE_USER = 'newbie'
-        REMOTE_HOST = '118.69.34.46'
-        REMOTE_PORT = '3334'
-        REMOTE_PATH = '/usr/share/nginx/html/jenkins'
-        REMOTE_DEPLOY_PATH = '/usr/share/nginx/html/jenkins/tannp/template2'
-        
-        // Deployment configuration
-        PROJECT_NAME = 'web-performance-project1-initial'
-        DEPLOY_FILES = 'index.html 404.html css js images'
-        
-        // Slack configuration
-        SLACK_CHANNEL = '#lnd-2025-workshop-tannp'
-        
-        // Get current date for deployment folder
-        DEPLOY_DATE = sh(script: "date +%Y%m%d", returnStdout: true).trim()
-        
-        // User name for notifications
-        DEPLOY_USER = sh(script: "whoami", returnStdout: true).trim()
+
+    triggers {
+        // Poll SCM every minute for changes
+        pollSCM('* * * * *')
+        // GitHub hook trigger for GITScm polling
+        githubPush()
     }
-    
+
+    parameters {
+        choice(
+            name: 'DEPLOY_ENVIRONMENT',
+            choices: ['local', 'firebase', 'remote', 'both'],
+            description: 'Choose deployment environment: both (Firebase + Remote), firebase (Hosting), remote (Server), or local (template2)'
+        )
+        string(
+            name: 'YOUR_NAME',
+            defaultValue: 'tannp',
+            description: 'Your name for creating personal deployment folder (e.g., tannp)'
+        )
+        string(
+            name: 'KEEP_DEPLOYMENTS',
+            defaultValue: '5',
+            description: 'Number of deployment folders to keep (older ones will be deleted)'
+        )
+        string(
+            name: 'SLACK_CHANNEL',
+            defaultValue: '#lnd-2025-workshop-tannp',
+            description: 'Slack channel for notifications (e.g., #jenkins-notifications)'
+        )
+        string(
+            name: 'SLACK_TEAM_DOMAIN',
+            defaultValue: 'ventura-vn',
+            description: 'Slack workspace domain (e.g., your-company)'
+        )
+    }
+
+    environment {
+        // Firebase credentials
+        FIREBASE_TOKEN = credentials('firebase-token')
+        FIREBASE_PROJECT = 'tannp-jenkins-ws2'
+
+        // Remote server credentials
+        SSH_USER = 'newbie'              // SSH user for connection
+        DEPLOY_SERVER = '118.69.34.46'   // SSH server
+        SSH_PORT = '3334'                // SSH port
+        WEB_SERVER = '10.1.1.195'        // Web server for HTTP access
+        SSH_KEY = credentials('remote-server-password')  // Should be newbie_id_rsa
+
+        // Deployment paths
+        REMOTE_BASE_PATH = "/usr/share/nginx/html/jenkins"
+        DEPLOY_USER = "${params.YOUR_NAME}"      // Directory name based on YOUR_NAME parameter
+        TIMESTAMP = sh(script: 'date +%Y%m%d%H%M%S', returnStdout: true).trim()
+        KEEP_DEPLOYMENTS = "${params.KEEP_DEPLOYMENTS}"  // Number of deployments to keep
+
+        // Slack notification
+        SLACK_WEBHOOK_URL = credentials('slack-token')  // Slack webhook URL credential
+        SLACK_CHANNEL = "${params.SLACK_CHANNEL}"      // Slack channel from parameters
+        SLACK_TEAM_DOMAIN = "${params.SLACK_TEAM_DOMAIN}"  // Slack workspace from parameters
+    }
+
     stages {
-        stage('Checkout') {
+        stage('Branch Check') {
             steps {
-                echo 'Checking out source code from SCM...'
-                checkout scm
-                
-                // Display current branch and commit info
                 script {
-                    def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    echo "Building commit: ${gitCommit} on branch: ${gitBranch}"
+                    def currentBranch = env.GIT_BRANCH ?: sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    echo "🌿 Current branch: ${currentBranch}"
+
+                    // Remove origin/ prefix if present
+                    currentBranch = currentBranch.replaceAll(/^origin\//, '')
+                    if (currentBranch != 'main') {
+                        echo "⚠️ Skipping deployment - not on main branch (current: ${currentBranch})"
+                        env.SKIP_DEPLOYMENT = 'true'
+                    } else {
+                        echo "✅ On main branch - proceeding with deployment"
+                        env.SKIP_DEPLOYMENT = 'false'
+                    }
                 }
             }
         }
-        
+
+        stage('Environment Check') {
+            steps {
+                echo "🔍 Verifying build environment..."
+
+                sh '''
+                    # Check Node.js version compatibility (must be >= 20.0.0 for Firebase CLI)
+                    NODE_VERSION=$(node --version | cut -d'v' -f2)
+                    NODE_MAJOR=$(echo $NODE_VERSION | cut -d'.' -f1)
+
+                    if [ "$NODE_MAJOR" -lt 20 ]; then
+                        echo "❌ ERROR: Node.js version $NODE_VERSION incompatible with Firebase CLI (required: >= 20.0.0)"
+                        exit 1
+                    fi
+
+                    # Check Firebase CLI availability
+                    if ! command -v firebase >/dev/null 2>&1; then
+                        echo "❌ Firebase CLI not found"
+                        exit 1
+                    fi
+
+                    echo "✅ Environment check passed"
+                '''
+            }
+        }
+
+        stage('Checkout(scm)') {
+            steps {
+                echo "🔍 Checking out source code..."
+                checkout scm
+
+                sh '''
+                    # Verify critical files exist
+                    for file in package.json index.html js css images; do
+                        [ -e "$file" ] || { echo "❌ Critical file/directory missing: $file"; exit 1; }
+                    done
+                    echo "✅ Critical files verified"
+                '''
+            }
+        }
+
         stage('Build') {
             steps {
-                echo 'Installing dependencies...'
-                dir("${PROJECT_NAME}") {
-                    sh 'npm install'
-                }
+                echo "📦 Building project..."
+                sh '''
+                    # Install dependencies
+                    npm install
+                '''
             }
         }
-        
-        stage('Lint & Test') {
+
+        stage('Lint/Test') {
             steps {
-                echo 'Running linting and tests...'
-                dir("${PROJECT_NAME}") {
-                    sh 'npm run test:ci'
-                }
+                echo "🧪 Running linting and tests..."
+                sh '''
+                    npm run test:ci
+                '''
             }
             post {
                 always {
-                    // Archive test results if they exist
+                    // Archive test results if available
                     script {
-                        if (fileExists("${PROJECT_NAME}/coverage")) {
+                        if (fileExists('coverage/')) {
+                            echo "📊 Archiving test coverage results..."
                             publishHTML([
                                 allowMissing: false,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
-                                reportDir: "${PROJECT_NAME}/coverage/lcov-report",
+                                reportDir: 'coverage/lcov-report',
                                 reportFiles: 'index.html',
-                                reportName: 'Coverage Report'
+                                reportName: 'Test Coverage Report'
                             ])
                         }
                     }
                 }
             }
         }
-        
+
         stage('Deploy') {
-            parallel {
-                stage('Deploy to Firebase') {
-                    steps {
-                        echo 'Deploying to Firebase Hosting...'
-                        script {
-                            try {
-                                // Prepare public folder for Firebase (files are in project root)
-                                sh '''
-                                    mkdir -p public
-                                    cp -r ./index.html ./404.html ./css ./js ./images ./public
-                                '''
-
-                                // Deploy using Firebase token
-                                withCredentials([string(credentialsId: 'firebase-token', variable: 'FIREBASE_TOKEN')]) {
-                                    sh """
-                                        firebase deploy --token "\$FIREBASE_TOKEN" --only hosting --project="${FIREBASE_PROJECT}"
-                                    """
-                                }
-                                echo "✅ Firebase deployment successful!"
-                            } catch (Exception e) {
-                                echo "⚠️ Firebase deployment failed: ${e.getMessage()}"
-                                echo "This might be due to:"
-                                echo "- Missing 'firebase-token' credential in Jenkins"
-                                echo "- Invalid or expired Firebase token"
-                                echo "- Project '${FIREBASE_PROJECT}' doesn't exist or no permissions"
-                                echo "- Network connectivity issues"
-                                echo ""
-                                echo "💡 To fix this:"
-                                echo "1. Run: firebase login:ci"
-                                echo "2. Copy the generated token"
-                                echo "3. Add to Jenkins Credentials as 'firebase-token' (Secret text)"
-                                currentBuild.result = 'UNSTABLE'
-                            }
-                        }
-                    }
+            when {
+                allOf {
+                    // Only deploy if tests pass
+                    expression { currentBuild.currentResult == null || currentBuild.currentResult == 'SUCCESS' }
+                    // Only deploy on main branch
+                    expression { env.SKIP_DEPLOYMENT != 'true' }
                 }
-                
-                stage('Deploy to Remote Server') {
-                    steps {
-                        echo 'Deploying to remote server...'
-                        script {
-                            try {
-                                def RELEASE_DATE = new Date().format("yyyyMMddHHmmss")
-                                def PRIVATE_FOLDER = "/usr/share/nginx/html/jenkins/tannp"
-                                def DEPLOY_FOLDER = "/usr/share/nginx/html/jenkins/tannp/deploy"
-                                def RELEASE_FOLDER = "${DEPLOY_FOLDER}/${RELEASE_DATE}"
-                                def TEMPLATE_FOLDER = "/usr/share/nginx/html/jenkins/template2"
-                                def REMOTE_PORT = 3334
-                                def REMOTE_USER = "newbie"
-                                def REMOTE_HOST = "118.69.34.46"
+            }
 
-                                withCredentials([sshUserPrivateKey(credentialsId: 'remote-server-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
-                                    // Initialize private folder from template if empty
-                                    sh """
-                                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
-                                            mkdir -p ${PRIVATE_FOLDER}
-                                            if [ -z "\$(ls -A ${PRIVATE_FOLDER})" ]; then
-                                                cp -r ${TEMPLATE_FOLDER}/* ${PRIVATE_FOLDER}
-                                            fi
-                                        '
-                                    """
+            steps {
+                script {
+                    // Determine deployment target
+                    def deployTarget = params.DEPLOY_ENVIRONMENT
 
-                                    // Create release folder
-                                    sh """
-                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "mkdir -p ${RELEASE_FOLDER}"
-                                    """
+                    echo "🚀 Starting deployment to: ${deployTarget}"
 
-                                    // Copy files to release folder (files are in workspace root)
-                                    sh """
-                                        scp -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -P ${REMOTE_PORT} -r ./index.html ./404.html ./css ./js ./images ${REMOTE_USER}@${REMOTE_HOST}:${RELEASE_FOLDER}
-                                    """
+                    // Prepare deployment files
+                    sh '''
+                        # Create deployment staging area
+                        rm -rf deploy-staging
+                        mkdir -p deploy-staging
 
-                                    // Create symlink to current release
-                                    sh """
-                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} "rm -rf ${DEPLOY_FOLDER}/current && ln -s ${RELEASE_FOLDER} ${DEPLOY_FOLDER}/current"
-                                    """
+                        # Copy deployment files
+                        cp index.html 404.html deploy-staging/
+                        cp -r css js images deploy-staging/
+                        [ -f firebase.json ] && cp firebase.json deploy-staging/
+                        [ -f .firebaserc ] && cp .firebaserc deploy-staging/
+                        [ -f eslint.config.js ] && cp eslint.config.js deploy-staging/
+                        [ -f package.json ] && cp package.json deploy-staging/
 
-                                    // Cleanup old releases (keep 5 most recent)
-                                    sh """
-                                        ssh -o StrictHostKeyChecking=no -i "\${SSH_KEY}" -p ${REMOTE_PORT} ${REMOTE_USER}@${REMOTE_HOST} '
-                                            cd ${DEPLOY_FOLDER} && ls -1t | grep -v "^current\$" | tail -n +6 | xargs -r rm -rf
-                                        '
-                                    """
-                                }
-                                echo "✅ Remote server deployment successful!"
-                            } catch (Exception e) {
-                                echo "⚠️ Remote server deployment failed: ${e.getMessage()}"
-                                echo "This might be due to:"
-                                echo "- SSH key authentication issues"
-                                echo "- Network connectivity to ${REMOTE_HOST}:${REMOTE_PORT}"
-                                echo "- Permission issues on remote server"
-                                currentBuild.result = 'UNSTABLE'
-                            }
-                        }
+                        echo "✅ Deployment package prepared"
+                    '''
+
+                    // Deploy to local using deploy-local.sh script
+                    if (deployTarget == 'local' || deployTarget == 'both') {
+                        echo "📱 Deploying to Local..."
+
+                        sh '''
+                            chmod +x deploy-local.sh
+                            ./deploy-local.sh
+                            echo "✅ Local deployment completed"
+                        '''
+                    }
+
+                    // Deploy to Firebase Hosting
+                    if (deployTarget == 'firebase' || deployTarget == 'both') {
+                        echo "🔥 Deploying to Firebase..."
+
+                        sh '''
+                            chmod +x deploy-firebase.sh
+                            ./deploy-firebase.sh
+                            echo "✅ Firebase deployment completed"
+                        '''
+                    }
+
+                    // Deploy to remote server
+                    if (deployTarget == 'remote' || deployTarget == 'both') {
+                        echo "🌐 Deploying to Remote Server..."
+
+                        sh '''
+                            echo "🔧 Running remote deployment script..."
+
+                            # Make sure the script is executable
+                            chmod +x deploy-remote.sh
+
+                            echo "🚀 Executing deploy-remote.sh..."
+                            ./deploy-remote.sh
+
+                            echo "✅ Remote deployment completed"
+                        '''
                     }
                 }
             }
         }
     }
-    
+
     post {
-        success {
-            echo 'Pipeline completed successfully!'
-            script {
-                def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                
-                try {
-                    slackSend(
-                        channel: env.SLACK_CHANNEL,
-                        color: 'good',
-                        message: """
-                            ✅ *Deployment Successful!*
-                            
-                            *User:* ${env.DEPLOY_USER}
-                            *Job:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                            *Branch:* ${gitBranch}
-                            *Commit:* ${gitCommit}
-                            *Duration:* ${currentBuild.durationString}
-                            
-                            🚀 Successfully deployed to Firebase and Remote Server
-                            📅 Deploy Date: ${env.DEPLOY_DATE}
-                        """.stripIndent()
-                    )
-                } catch (Exception slackError) {
-                    echo "⚠️ Slack notification failed: ${slackError.getMessage()}"
-                }
-            }
-        }
-        
-        failure {
-            echo 'Pipeline failed!'
-            script {
-                // Get git info before any cleanup
-                def gitCommit = "unknown"
-                def gitBranch = "unknown"
-                
-                try {
-                    gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                } catch (Exception e) {
-                    echo "Could not get git info: ${e.getMessage()}"
-                }
-                
-                try {
-                    slackSend(
-                        channel: env.SLACK_CHANNEL,
-                        color: 'danger',
-                        message: """
-                            ❌ *Deployment Failed!*
-                            
-                            *User:* ${env.DEPLOY_USER}
-                            *Job:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                            *Branch:* ${gitBranch}
-                            *Commit:* ${gitCommit}
-                            *Duration:* ${currentBuild.durationString}
-                            
-                            💥 Please check the build logs for details
-                            🔗 Build URL: ${env.BUILD_URL}
-                        """.stripIndent()
-                    )
-                } catch (Exception slackError) {
-                    echo "⚠️ Slack notification failed: ${slackError.getMessage()}"
-                    echo "Please check Slack configuration in Jenkins system settings"
-                }
-            }
-        }
-        
-        unstable {
-            echo 'Pipeline completed with warnings!'
-            script {
-                // Get git info before any cleanup
-                def gitCommit = "unknown"
-                def gitBranch = "unknown"
-                
-                try {
-                    gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                } catch (Exception e) {
-                    echo "Could not get git info: ${e.getMessage()}"
-                }
-                
-                try {
-                    slackSend(
-                        channel: env.SLACK_CHANNEL,
-                        color: 'warning',
-                        message: """
-                            ⚠️ *Deployment Completed with Warnings*
-                            
-                            *User:* ${env.DEPLOY_USER}
-                            *Job:* ${env.JOB_NAME} #${env.BUILD_NUMBER}
-                            *Branch:* ${gitBranch}
-                            *Commit:* ${gitCommit}
-                            *Duration:* ${currentBuild.durationString}
-                            
-                            🔍 Please review the build logs
-                            🔗 Build URL: ${env.BUILD_URL}
-                        """.stripIndent()
-                    )
-                } catch (Exception slackError) {
-                    echo "⚠️ Slack notification failed: ${slackError.getMessage()}"
-                }
-            }
-        }
-        
         always {
-            echo 'Cleaning up workspace...'
-            cleanWs()
+            // Clean up
+            sh 'rm -rf deploy-staging'
+
+            // Archive artifacts
+            archiveArtifacts artifacts: 'index.html,404.html,css/**,js/**,images/**,eslint.config.js,package.json', allowEmptyArchive: true
+        }
+        success {
+            script {
+                sendSlackNotification(true)
+            }
+        }
+        failure {
+            script {
+                sendSlackNotification(false)
+            }
         }
     }
-    
-    triggers {
-        // Auto-run on SCM changes (GitHub webhook)
-        githubPush()
+}
+
+def sendSlackNotification(boolean isSuccess) {
+    try {
+        // Get git info safely
+        def author = sh(script: 'git log -1 --pretty=format:"%an" 2>/dev/null || echo "Unknown"', returnStdout: true).trim()
+        def releaseDate = sh(script: 'date +%Y%m%d', returnStdout: true).trim()
+
+        // Build message and set color
+        def message = ""
+        def color = ""
+
+        if (isSuccess) {
+            message = ":white_check_mark: *BUILD SUCCESS*\n" +
+                     "Author: ${author}\n" +
+                     "Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                     "Release: ${releaseDate}" +
+                     getDeploymentLinks()
+            color = "good"  // Green color
+        } else {
+            message = ":x: *BUILD FAILED*\n" +
+                     "Author: ${author}\n" +
+                     "Job: ${env.JOB_NAME} #${env.BUILD_NUMBER}\n" +
+                     "Console: ${env.BUILD_URL}console"
+            color = "danger"  // Red color
+        }
+
+        // Send notification using Slack plugin
+        slackSend(
+            channel: env.SLACK_CHANNEL,     // Use environment variable
+            color: color,
+            message: message,
+            teamDomain: env.SLACK_TEAM_DOMAIN,  // Use environment variable
+            token: env.SLACK_WEBHOOK_URL    // Use existing environment variable
+        )
+
+        echo "✅ Slack notification sent successfully using plugin"
+
+    } catch (Exception e) {
+        echo "⚠️ Slack notification error: ${e.getMessage()}"
     }
+}
+
+def getDeploymentLinks() {
+    def target = params.DEPLOY_ENVIRONMENT
+    def links = ""
+
+    if (target == 'firebase' || target == 'both') {
+        links += "\n:fire: Firebase: https://${env.FIREBASE_PROJECT}.web.app"
+    }
+    if (target == 'remote' || target == 'both') {
+        links += "\n:globe_with_meridians: Remote: http://${env.WEB_SERVER}/jenkins/${env.DEPLOY_USER}/current/"
+    }
+    if (target == 'local') {
+        links += "\n:computer: Local: Deployment completed"
+    }
+
+    return links
 }
